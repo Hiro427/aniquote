@@ -127,7 +127,7 @@ func selectRandomQuote(folder string) {
 	}
 
 	fmt.Printf("\"%s\"\n", quote.Quote)
-	fmt.Printf("\t%s - \"%s\"\n", quote.Character, quote.Anime)
+	fmt.Printf("\n%s - \"%s\"\n", quote.Character, quote.Anime)
 }
 
 func main() {
