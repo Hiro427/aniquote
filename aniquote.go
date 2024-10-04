@@ -126,8 +126,8 @@ func selectRandomQuote(folder string) {
 		log.Fatalf("Failed to parse JSON: %v\n", err)
 	}
 
-	fmt.Printf("\"%s\"\n", quote.Quote)
-	fmt.Printf("\n%s - \"%s\"\n", quote.Character, quote.Anime)
+	fmt.Printf("\n%s\n", quote.Quote)
+	fmt.Printf("\n%s - %s\n", quote.Character, quote.Anime)
 }
 
 func main() {
