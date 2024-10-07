@@ -1,9 +1,3 @@
-.venv/
+go.mod
 
-build/
-
-dist/
-
-__pycache__/ 
-
-aniquote.spec
+go.sum 
