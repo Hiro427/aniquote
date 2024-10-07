@@ -67,7 +67,7 @@ func api(db *sql.DB) {
 }
 func makeDB() *sql.DB {
 	homeDir, _ := os.UserHomeDir()
-	dbPath := homeDir + "/.dotfiles/assets/quotes.db"
+	dbPath := homeDir + "/.quotes.db"
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		log.Fatal(err)
