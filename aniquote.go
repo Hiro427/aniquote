@@ -1,158 +1,152 @@
 package main
 
+// {
+// 	status: `success`,
+// 	data: {
+// 		content: `Actually... Ponytails turn me on... that ponytail you had back then, it looked so good it was criminal!`,
+// 		anime: {
+// 			id: 319,
+// 			name: `The Melancholy of Haruhi Suzumiya`
+// 		},
+// 		character: {
+// 			id: 401,
+// 			name: `Kyon`
+// 		}
+// 	}
+// }
 import (
+	"database/sql"
 	"encoding/json"
-	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
-	"math/rand"
 	"net/http"
 	"os"
-	"path/filepath"
-	"time"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
-// Quote struct for the API response
 type Quote struct {
-	Quote     string `json:"quote"`
-	Character string `json:"character"`
-	Anime     string `json:"anime"`
+	Content   string
+	Anime     string
+	Character string
 }
 
-// Save the quote to a new JSON file
-func saveQuoteToFile(quoteData Quote, folder string) {
-	// Create folder if it doesn't exist
-	if _, err := os.Stat(folder); os.IsNotExist(err) {
-		err = os.MkdirAll(folder, 0755)
+func api(db *sql.DB) {
+	url := "https://animechan.io/api/v1/quotes/random"
+	resp, _ := http.Get(url)
+	body, _ := io.ReadAll(resp.Body)
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	err := json.Unmarshal(body, &result)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Print raw result for debugging
+	// fmt.Println("Raw API Result:", result)
+
+	// Extract "data" from the result
+	data := result["data"].(map[string]interface{})
+
+	// Debugging: Print the extracted data
+	// fmt.Println("Extracted Data:", data)
+
+	quote := Quote{
+		Content:   data["content"].(string),
+		Anime:     data["anime"].(map[string]interface{})["name"].(string),
+		Character: data["character"].(map[string]interface{})["name"].(string),
+	}
+
+	// Print the quote struct to ensure it has correct values
+	// fmt.Printf("Quote Struct: %+v\n", quote)
+
+	insertDB(db, quote.Content, quote.Anime, quote.Character)
+	// fmt.Printf("%s - %s (%s)\n", quote.Content, quote.Character, quote.Anime)
+}
+func makeDB() *sql.DB {
+	homeDir, _ := os.UserHomeDir()
+	dbPath := homeDir + "/.dotfiles/assets/quotes.db"
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Create table with the correct schema
+	createTableSQL := `CREATE TABLE IF NOT EXISTS quotes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        content TEXT,
+        anime TEXT,
+        character TEXT
+    );`
+	_, err = db.Exec(createTableSQL)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return db
+}
+
+// Function to check if a quote already exists in the database
+func quoteExists(db *sql.DB, content string) bool {
+	var exists bool
+	query := `SELECT EXISTS(SELECT 1 FROM quotes WHERE content = ? LIMIT 1)`
+	err := db.QueryRow(query, content).Scan(&exists)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return exists
+}
+
+// Function to insert a quote into the database, only if it's not a duplicate
+func insertDB(db *sql.DB, quote string, anime string, character string) {
+	if !quoteExists(db, quote) {
+		insertQuoteSQL := `INSERT INTO quotes (content, anime, character) VALUES (?, ?, ?)`
+		_, err := db.Exec(insertQuoteSQL, quote, anime, character)
 		if err != nil {
 			log.Fatal(err)
 		}
+		fmt.Println("Inserted into DB:")
+	} else {
+		fmt.Println("Quote already exists, skipping insert.")
 	}
+}
 
-	// Create a unique filename using the current timestamp
-	timestamp := time.Now().Format("20060102_150405")
-	filename := filepath.Join(folder, fmt.Sprintf("quote_%s.json", timestamp))
-
-	// Save the quote to a new JSON file
-	file, err := os.Create(filename)
+// Function to retrieve a random quote from the database
+func getRandomQuote(db *sql.DB) (string, string, string) {
+	var content, anime, character string
+	query := `SELECT content, anime, character FROM quotes ORDER BY RANDOM() LIMIT 1`
+	err := db.QueryRow(query).Scan(&content, &anime, &character)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer file.Close()
-
-	jsonData, err := json.MarshalIndent(quoteData, "", "    ")
-	if err != nil {
-		log.Fatal(err)
-	}
-	file.Write(jsonData)
-}
-
-// Download a random quote from the API and save it
-func downloadQuote(folder string) {
-	resp, err := http.Get("https://animechan.io/api/v1/quotes/random")
-	if err != nil {
-		log.Printf("Error fetching quote: %v\n", err)
-		time.Sleep(2 * time.Second)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		fmt.Println("API is busy or unavailable")
-		time.Sleep(2 * time.Second)
-		return
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Printf("Error reading response body: %v\n", err)
-		time.Sleep(2 * time.Second)
-		return
-	}
-
-	var result map[string]interface{}
-	err = json.Unmarshal(body, &result)
-	if err != nil {
-		log.Printf("Error parsing JSON: %v\n", err)
-		return
-	}
-
-	data := result["data"].(map[string]interface{})
-	quote := data["content"].(string)
-	character := data["character"].(map[string]interface{})["name"].(string)
-	anime := data["anime"].(map[string]interface{})["name"].(string)
-
-	jsonQuote := Quote{
-		Quote:     quote,
-		Character: character,
-		Anime:     anime,
-	}
-
-	// Save the quote
-	saveQuoteToFile(jsonQuote, folder)
-}
-
-// Select and print a random quote from the folder
-func selectRandomQuote(folder string) {
-	files, err := ioutil.ReadDir(folder)
-	if err != nil {
-		log.Fatalf("Failed to read directory: %v\n", err)
-	}
-
-	var jsonFiles []string
-	for _, file := range files {
-		if !file.IsDir() && filepath.Ext(file.Name()) == ".json" {
-			jsonFiles = append(jsonFiles, filepath.Join(folder, file.Name()))
-		}
-	}
-
-	if len(jsonFiles) == 0 {
-		fmt.Println("No quotes available.")
-		return
-	}
-
-	rand.Seed(time.Now().UnixNano())
-	randomFile := jsonFiles[rand.Intn(len(jsonFiles))]
-
-	data, err := ioutil.ReadFile(randomFile)
-	if err != nil {
-		log.Fatalf("Failed to read file: %v\n", err)
-	}
-
-	var quote Quote
-	err = json.Unmarshal(data, &quote)
-	if err != nil {
-		log.Fatalf("Failed to parse JSON: %v\n", err)
-	}
-
-	fmt.Printf("\n%s\n", quote.Quote)
-	fmt.Printf("\n%s - %s\n", quote.Character, quote.Anime)
+	return content, anime, character
 }
 
 func main() {
-	// Define flags
-	download := flag.Bool("download", false, "Download a new random quote")
-	random := flag.Bool("random", false, "Display a random quote from the saved quotes")
+	db := makeDB()
+	defer db.Close()
 
-	// Parse the flags
-	flag.Parse()
+	// Check if an argument was provided
+	if len(os.Args) < 2 {
+		fmt.Println("Please provide an option: 'update' or 'random'")
+		return
+	}
 
-	// Define the folder where quotes are saved
-	folder := filepath.Join(os.Getenv("HOME"), ".dotfiles/assets/quotes")
+	// Get the command-line argument
+	opt := os.Args[1]
 
-	if *download {
-		fmt.Println("Downloading 15 new quotes...")
-		for i := 0; i < 15; i++ {
-			downloadQuote(folder)
-			fmt.Printf("Downloaded quote %d/15\n", i+1)
+	if opt == "update" {
+		// Loop to insert 10 new quotes
+		for i := 0; i < 10; i++ {
+			api(db)
 		}
-	}
-	if *random {
-		selectRandomQuote(folder)
-	}
-
-	if !*download && !*random {
-		fmt.Println("Please provide a valid option: --download or --random")
+	} else if opt == "random" {
+		// Fetch a random quote from the database
+		content, anime, character := getRandomQuote(db)
+		fmt.Printf("%s\n \n-%s (%s)\n", content, character, anime)
+	} else {
+		fmt.Println("Invalid option. Use 'update' to fetch new quotes or 'random' to get a random quote.")
 	}
 }
