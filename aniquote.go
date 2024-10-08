@@ -15,6 +15,7 @@ package main
 // 	}
 // }
 import (
+	"bufio"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -44,14 +46,7 @@ func api(db *sql.DB) {
 		log.Fatal(err)
 	}
 
-	// Print raw result for debugging
-	// fmt.Println("Raw API Result:", result)
-
-	// Extract "data" from the result
 	data := result["data"].(map[string]interface{})
-
-	// Debugging: Print the extracted data
-	// fmt.Println("Extracted Data:", data)
 
 	quote := Quote{
 		Content:   data["content"].(string),
@@ -59,11 +54,7 @@ func api(db *sql.DB) {
 		Character: data["character"].(map[string]interface{})["name"].(string),
 	}
 
-	// Print the quote struct to ensure it has correct values
-	// fmt.Printf("Quote Struct: %+v\n", quote)
-
 	insertDB(db, quote.Content, quote.Anime, quote.Character)
-	// fmt.Printf("%s - %s (%s)\n", quote.Content, quote.Character, quote.Anime)
 }
 func makeDB() *sql.DB {
 	homeDir, _ := os.UserHomeDir()
@@ -73,7 +64,6 @@ func makeDB() *sql.DB {
 		log.Fatal(err)
 	}
 
-	// Create table with the correct schema
 	createTableSQL := `CREATE TABLE IF NOT EXISTS quotes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         content TEXT,
@@ -88,7 +78,6 @@ func makeDB() *sql.DB {
 	return db
 }
 
-// Function to check if a quote already exists in the database
 func quoteExists(db *sql.DB, content string) bool {
 	var exists bool
 	query := `SELECT EXISTS(SELECT 1 FROM quotes WHERE content = ? LIMIT 1)`
@@ -113,6 +102,30 @@ func insertDB(db *sql.DB, quote string, anime string, character string) {
 	}
 }
 
+func insertCustomDB(db *sql.DB) {
+	type CustomQuote struct {
+		Content     string
+		Description string
+		Person      string
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Println("Enter the quote: ")
+	customQuote, _ := reader.ReadString('\n')
+	fmt.Println("Enter Description (book, poem, speech etc): ")
+	customDescription, _ := reader.ReadString('\n')
+	fmt.Println("Enter Name: ")
+	customName, _ := reader.ReadString('\n')
+
+	customq := CustomQuote{
+		Content:     customQuote,
+		Description: customDescription,
+		Person:      customName,
+	}
+	insertDB(db, customq.Content, customq.Description, customq.Person)
+
+}
+
 // Function to retrieve a random quote from the database
 func getRandomQuote(db *sql.DB) (string, string, string) {
 	var content, anime, character string
@@ -128,24 +141,29 @@ func main() {
 	db := makeDB()
 	defer db.Close()
 
-	// Check if an argument was provided
 	if len(os.Args) < 2 {
 		fmt.Println("Please provide an option: 'update' or 'random'")
 		return
 	}
 
-	// Get the command-line argument
 	opt := os.Args[1]
 
 	if opt == "update" {
-		// Loop to insert 10 new quotes
 		for i := 0; i < 10; i++ {
 			api(db)
 		}
 	} else if opt == "random" {
-		// Fetch a random quote from the database
 		content, anime, character := getRandomQuote(db)
 		fmt.Printf("%s\n \n-%s (%s)\n", content, character, anime)
+	} else if opt == "insert" {
+		insertCustomDB(db)
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Println("Enter another quote? (y/n): ")
+		option, _ := reader.ReadString('\n')
+		option = strings.TrimSpace(option)
+		if option == "y" {
+			insertCustomDB(db)
+		}
 	} else {
 		fmt.Println("Invalid option. Use 'update' to fetch new quotes or 'random' to get a random quote.")
 	}
