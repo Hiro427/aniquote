@@ -107,7 +107,7 @@ func insertDB(db *sql.DB, quote string, anime string, character string) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Println("Inserted into DB:")
+		fmt.Println("Quote Inserted")
 	} else {
 		fmt.Println("Quote already exists, skipping insert.")
 	}
