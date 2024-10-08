@@ -25,6 +25,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mitchellh/go-wordwrap"
+
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -112,10 +114,13 @@ func insertCustomDB(db *sql.DB) {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Println("Enter the quote: ")
 	customQuote, _ := reader.ReadString('\n')
+	customQuote = strings.TrimSpace(customQuote)
 	fmt.Println("Enter Description (book, poem, speech etc): ")
 	customDescription, _ := reader.ReadString('\n')
+	customDescription = strings.TrimSpace(customDescription)
 	fmt.Println("Enter Name: ")
 	customName, _ := reader.ReadString('\n')
+	customName = strings.TrimSpace(customName)
 
 	customq := CustomQuote{
 		Content:     customQuote,
@@ -154,7 +159,8 @@ func main() {
 		}
 	} else if opt == "random" {
 		content, anime, character := getRandomQuote(db)
-		fmt.Printf("%s\n \n-%s (%s)\n", content, character, anime)
+		wrappedQuote := wordwrap.WrapString(content, 100)
+		fmt.Printf("%s\n \n-%s, %s\n", wrappedQuote, character, anime)
 	} else if opt == "insert" {
 		insertCustomDB(db)
 		reader := bufio.NewReader(os.Stdin)
